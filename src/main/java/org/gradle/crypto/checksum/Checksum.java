@@ -18,6 +18,7 @@ package org.gradle.crypto.checksum;
 import com.google.common.hash.HashCode;
 import com.google.common.hash.HashFunction;
 import com.google.common.hash.Hashing;
+import com.google.common.io.ByteSource;
 import com.google.common.io.Files;
 import org.gradle.api.Action;
 import org.gradle.api.DefaultTask;
@@ -33,12 +34,22 @@ import org.gradle.api.tasks.incremental.InputFileDetails;
 
 import java.io.File;
 import java.io.IOException;
+import java.io.InputStream;
+import java.nio.file.FileSystems;
+import java.nio.file.PathMatcher;
+import java.util.ArrayList;
+import java.util.Collections;
+import java.util.List;
 
+@SuppressWarnings("UnstableApiUsage")
 public class Checksum extends DefaultTask {
     private FileCollection files;
     private File outputDir;
     private Algorithm algorithm;
+    private List<PathMatcher> matchers = Collections.emptyList();
+    private String crlfGlobs;
 
+    @SuppressWarnings("UnstableApiUsage")
     public enum Algorithm {
         MD5(Hashing.md5()),
         SHA256(Hashing.sha256()),
@@ -55,6 +66,7 @@ public class Checksum extends DefaultTask {
     public Checksum() {
         outputDir = new File(getProject().getBuildDir(), "checksums");
         algorithm = Algorithm.SHA256;
+        crlfGlobs = null;
     }
 
     @InputFiles
@@ -73,6 +85,23 @@ public class Checksum extends DefaultTask {
 
     public void setAlgorithm(Algorithm algorithm) {
         this.algorithm = algorithm;
+    }
+
+    @Input
+    public String getCrlfFiles() {
+        return crlfGlobs;
+    }
+
+    public void setCrlfFiles(String value) {
+        if (value == null || value.trim().isEmpty()) {
+            matchers = Collections.emptyList();
+        } else {
+            String[] patterns = value.trim().split("\\s*[;,]\\s*");
+            matchers = new ArrayList<>(patterns.length);
+            for (String pattern : patterns) {
+                matchers.add(FileSystems.getDefault().getPathMatcher("glob:" + pattern));
+            }
+        }
     }
 
     @OutputDirectory
@@ -106,9 +135,9 @@ public class Checksum extends DefaultTask {
                     return;
                 }
                 File sumFile = outputFileFor(input);
-                HashCode hashCode = null;
+                HashCode hashCode;
                 try {
-                    hashCode = Files.asByteSource(input).hash(algorithm.hashFunction);
+                    hashCode = getSource(input).hash(algorithm.hashFunction);
                     Files.write(hashCode.toString().getBytes(), sumFile);
                 } catch (IOException e) {
                     throw new GradleException("Trouble creating checksum", e);
@@ -126,6 +155,23 @@ public class Checksum extends DefaultTask {
                 getProject().delete(outputFileFor(input));
             }
         });
+    }
+
+    private ByteSource getSource(File input) {
+        ByteSource source = Files.asByteSource(input);
+        if (crlfFile(input)) {
+            return new CrLfFreeByteSource(source);
+        }
+        return source;
+    }
+
+    private boolean crlfFile(File input) {
+        for (PathMatcher matcher : matchers) {
+            if (matcher.matches(input.toPath())) {
+                return true;
+            }
+        }
+        return true;
     }
 
     private File outputFileFor(File inputFile) {
@@ -151,5 +197,39 @@ public class Checksum extends DefaultTask {
                 files.include("**/*." + algo.toString().toLowerCase());
             }
         });
+    }
+
+    private class CrLfFreeByteSource extends ByteSource {
+        private final ByteSource source;
+        public CrLfFreeByteSource(ByteSource source) {
+            this.source = source;
+        }
+
+        @Override
+        public InputStream openStream() throws IOException {
+            final InputStream sourceStream = source.openStream();
+            final int[] hold = {-1};
+            return new InputStream() {
+                @Override
+                public int read() throws IOException {
+                    if (hold[0] != -1) {
+                        int rtn = hold[0];
+                        hold[0] = -1;
+                        return rtn;
+                    }
+                    int work = sourceStream.read();
+                    if (work == '\r') {
+                        work = sourceStream.read();
+                        if (work == '\n') {
+                            return work;
+                        } else {
+                            hold[0] = work;
+                            return '\r';
+                        }
+                    }
+                    return work;
+                }
+            };
+        }
     }
 }

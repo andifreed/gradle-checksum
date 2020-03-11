@@ -18,6 +18,7 @@ task createChecksums(type: Checksum, dependsOn: 'generateFiles') {
   files = generateFiles.outputs.files
   outputDir = new File(project.buildDir, "generatedChecksums")
   algorithm = Checksum.Algorithm.SHA512
+  crlfFiles = "*.sh,*.txt,*.xml,*.properties"
 }
 ```
 
@@ -29,6 +30,10 @@ supported. Please file an issue or make a pull request if you need support
 for some other hashing algorithm.
 
 By default, the `outputDir` will be set to `project.buildDir + "checksums"`.
+
+The crlfFiles is basically the files that can have their line endings switched as 
+they are checked out but that is not a significant change. In contrast bat file with
+just lf will 
 
 The task is incremental at the file level, and will only alter files in the
 output directory which end with file extensions managed by this task
