@@ -29,7 +29,7 @@ class IncrementalChecksumSpec extends Specification {
                 files = fileTree("input") {
                     include "**/*.txt"
                 }
-                outputDir = file("checksums")
+                checksumDir = file("checksums")
             }
         """
         newFolder('input')

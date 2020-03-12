@@ -15,16 +15,10 @@
  */
 package org.gradle.crypto.checksum;
 
-import com.google.common.hash.HashCode;
-import com.google.common.hash.HashFunction;
-import com.google.common.hash.Hashing;
 import com.google.common.io.Files;
 import org.gradle.api.Action;
-import org.gradle.api.DefaultTask;
 import org.gradle.api.GradleException;
-import org.gradle.api.file.ConfigurableFileTree;
 import org.gradle.api.file.FileCollection;
-import org.gradle.api.tasks.Input;
 import org.gradle.api.tasks.InputFiles;
 import org.gradle.api.tasks.OutputDirectory;
 import org.gradle.api.tasks.TaskAction;
@@ -34,27 +28,12 @@ import org.gradle.api.tasks.incremental.InputFileDetails;
 import java.io.File;
 import java.io.IOException;
 
-public class Checksum extends DefaultTask {
+public class Checksum extends ChecksumBase {
     private FileCollection files;
     private File outputDir;
-    private Algorithm algorithm;
-
-    public enum Algorithm {
-        MD5(Hashing.md5()),
-        SHA256(Hashing.sha256()),
-        SHA384(Hashing.sha384()),
-        SHA512(Hashing.sha512());
-
-        private final HashFunction hashFunction;
-
-        Algorithm(HashFunction hashFunction) {
-            this.hashFunction = hashFunction;
-        }
-    }
 
     public Checksum() {
         outputDir = new File(getProject().getBuildDir(), "checksums");
-        algorithm = Algorithm.SHA256;
     }
 
     @InputFiles
@@ -64,15 +43,6 @@ public class Checksum extends DefaultTask {
 
     public void setFiles(FileCollection files) {
         this.files = files;
-    }
-
-    @Input
-    public Algorithm getAlgorithm() {
-        return algorithm;
-    }
-
-    public void setAlgorithm(Algorithm algorithm) {
-        this.algorithm = algorithm;
     }
 
     @OutputDirectory
@@ -89,13 +59,14 @@ public class Checksum extends DefaultTask {
 
     @TaskAction
     public void generateChecksumFiles(IncrementalTaskInputs inputs) throws IOException {
+        final String checksumExt = "." + Checksum.this.getAlgorithm().toString().toLowerCase();
         if (!getOutputDir().exists()) {
             if (!getOutputDir().mkdirs()) {
                 throw new IOException("Could not create directory:" + getOutputDir());
             }
         }
         if (!inputs.isIncremental()) {
-            getProject().delete(allPossibleChecksumFiles());
+            getProject().delete(allPossibleChecksumFiles(getOutputDir()));
         }
 
         inputs.outOfDate(new Action<InputFileDetails>() {
@@ -105,13 +76,12 @@ public class Checksum extends DefaultTask {
                 if (input.isDirectory()) {
                     return;
                 }
-                File sumFile = outputFileFor(input);
-                HashCode hashCode = null;
+                File sumFile = outputFileFor(input, checksumExt);
                 try {
-                    hashCode = Files.asByteSource(input).hash(algorithm.hashFunction);
-                    Files.write(hashCode.toString().getBytes(), sumFile);
+                    String hashCodeStr = generateHashCode(input);
+                    Files.write(hashCodeStr.getBytes(), sumFile);
                 } catch (IOException e) {
-                    throw new GradleException("Trouble creating checksum", e);
+                    throw new GradleException("Trouble writing checksum", e);
                 }
             }
         });
@@ -123,33 +93,12 @@ public class Checksum extends DefaultTask {
                 if (input.isDirectory()) {
                     return;
                 }
-                getProject().delete(outputFileFor(input));
+                getProject().delete(outputFileFor(input, checksumExt));
             }
         });
     }
 
-    private File outputFileFor(File inputFile) {
-        return new File(getOutputDir(), inputFile.getName() + "." + algorithm.toString().toLowerCase());
-    }
-
-    private FileCollection allPossibleChecksumFiles() {
-        FileCollection possibleFiles = null;
-        for (Algorithm algo : Algorithm.values()) {
-            if (possibleFiles == null) {
-                possibleFiles = filesFor(algo);
-            } else {
-                possibleFiles = possibleFiles.plus(filesFor(algo));
-            }
-        }
-        return possibleFiles;
-    }
-
-    private FileCollection filesFor(final Algorithm algo) {
-        return getProject().fileTree(getOutputDir(), new Action<ConfigurableFileTree>() {
-            @Override
-            public void execute(ConfigurableFileTree files) {
-                files.include("**/*." + algo.toString().toLowerCase());
-            }
-        });
+    private File outputFileFor(File inputFile, String checksumExt) {
+        return new File(getOutputDir(), inputFile.getName() + checksumExt);
     }
 }

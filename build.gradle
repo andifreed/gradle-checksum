@@ -73,3 +73,15 @@ pluginBundle {
         }
     }
 }
+
+task myTree {
+        doLast {
+            ConfigurableFileTree tree = fileTree('.')
+
+            tree.include '**/*.java'
+            tree.include '**/*.properties'
+            tree.exclude '**/Abstract*'
+            println "Contents of fileTree"
+            tree.files.each { println it }
+        }
+    }

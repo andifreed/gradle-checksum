@@ -70,7 +70,7 @@ class ChecksumSpec extends Specification {
         given:
         buildFile << """
         sumAFile {
-          outputDir = new File(project.getBuildDir(), 'mySpecialChecksums')
+          checksumDir = new File(project.getBuildDir(), 'mySpecialChecksums')
         }
         """
         def expectedSumFile = new File(projectDir.getRoot(), 'build/mySpecialChecksums/aFile.txt.sha256')

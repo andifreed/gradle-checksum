@@ -14,11 +14,25 @@ task generateFiles {
   // Generates some files.
 }
 
+ File checksumDir = new File(project.rootDir, "modules/configuration/checksums/MyChecksums")
+ File rootDir = new File(project.rootDir, "modules/configuration")
+ FileTree files = new FileTree(rootDir)
+ files.include("gsrc/sdk")
+ files.exclude("gsrc/sdk/**/custom")
+ files.include("config/metadata/**/*sdk")
+
 task createChecksums(type: Checksum, dependsOn: 'generateFiles') {
-  files = generateFiles.outputs.files
-  outputDir = new File(project.buildDir, "generatedChecksums")
+  files = files
+  outputDir = checksumDir
   algorithm = Checksum.Algorithm.SHA512
 }
+
+task checkChecksums(type: CheckChecksum) {
+  checksumDir = checksumDir
+  rootDir = rootDir
+  algorithm = Checksum.Algorithm.SHA512
+}
+
 ```
 
 When the `createChecksums` task is finished, there will be a file ending in
